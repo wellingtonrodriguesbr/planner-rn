@@ -1,4 +1,5 @@
 import "@/styles/global.css";
+import "@/utils/dayjs-locale-config";
 
 import { Slot } from "expo-router";
 import { StatusBar, View } from "react-native";

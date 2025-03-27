@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Image, Keyboard, Text, View } from "react-native";
+import { Alert, Image, Keyboard, Text, View } from "react-native";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,17 @@ import {
   Settings2,
   UserRoundPlus,
   ArrowRight,
+  AtSign,
 } from "lucide-react-native";
 import { colors } from "@/styles/colors";
 import { Calendar } from "@/components/calendar";
+import { GuestEmail } from "@/components/email";
+import { calendarUtils, DatesSelected } from "@/utils/calendar-utils";
+import { validateInput } from "@/utils/validate-input";
+
+import { DateData } from "react-native-calendars";
+
+import dayjs from "dayjs";
 
 enum StepForm {
   TRIP_DETAILS = 1,
@@ -29,11 +37,69 @@ enum ModalType {
 export function Home() {
   const [stepForm, setStepForm] = useState(StepForm.TRIP_DETAILS);
   const [showModal, setShowModal] = useState(ModalType.NONE);
+  const [selectedDates, setSelectedDates] = useState<DatesSelected>(
+    {} as DatesSelected
+  );
+
+  const [destination, setDestination] = useState("");
+  const [emailToInvite, setEmailToInvite] = useState("");
+  const [emailsToInvite, setEmailsToInvite] = useState<string[]>([]);
 
   function handleNextStepForm() {
+    if (
+      destination.trim() === "" ||
+      !selectedDates.startsAt ||
+      !selectedDates.endsAt
+    ) {
+      return Alert.alert(
+        "Detalhes da viagem",
+        "Preencha todas as informações da viagem para seguir."
+      );
+    }
+
+    if (destination.length < 4) {
+      return Alert.alert(
+        "Detalhes da viagem",
+        "Destino não pode conter menos de 4 caracteres."
+      );
+    }
+
     if (stepForm === StepForm.TRIP_DETAILS) {
       setStepForm(StepForm.ADD_FRIENDS);
     }
+  }
+
+  function handleSelectDate(selectedDay: DateData) {
+    const dates = calendarUtils.orderStartsAtAndEndsAt({
+      startsAt: selectedDates.startsAt,
+      endsAt: selectedDates.endsAt,
+      selectedDay,
+    });
+    setSelectedDates(dates);
+  }
+
+  function handleRemoveEmail(emailToRemove: string) {
+    setEmailsToInvite((emails) => emails.filter((e) => e !== emailToRemove));
+  }
+
+  function handleAddEmail() {
+    if (emailToInvite.trim() === "") {
+      return Alert.alert("Convidar amigos", "Insira um e-mail para convidar.");
+    }
+
+    if (emailsToInvite.includes(emailToInvite)) {
+      return Alert.alert(
+        "Convidar amigos",
+        "Esse e-mail já foi adicionado a sua lista de convites."
+      );
+    }
+
+    if (!validateInput.email(emailToInvite)) {
+      return Alert.alert("Convidar amigos", "Insira um e-mail válido.");
+    }
+
+    setEmailsToInvite((emails) => [...emails, emailToInvite]);
+    setEmailToInvite("");
   }
 
   return (
@@ -59,6 +125,8 @@ export function Home() {
           <MapPin color={colors.zinc[400]} size={20} />
           <Input.Field
             placeholder="Para onde?"
+            value={destination}
+            onChangeText={setDestination}
             editable={stepForm === StepForm.TRIP_DETAILS}
           />
         </Input>
@@ -66,6 +134,7 @@ export function Home() {
           <CalendarIcon color={colors.zinc[400]} size={20} />
           <Input.Field
             placeholder="Quando?"
+            value={selectedDates.formatDatesInText}
             editable={stepForm === StepForm.TRIP_DETAILS}
             onFocus={() => Keyboard.dismiss()}
             showSoftInputOnFocus={false}
@@ -90,7 +159,22 @@ export function Home() {
 
             <Input>
               <UserRoundPlus color={colors.zinc[400]} size={20} />
-              <Input.Field placeholder="Quem estará na viagem?" />
+              <Input.Field
+                autoCorrect={false}
+                value={
+                  emailsToInvite.length > 0
+                    ? `${emailsToInvite.length} convidado(s)`
+                    : ""
+                }
+                editable={stepForm === StepForm.ADD_FRIENDS}
+                onFocus={() => Keyboard.dismiss()}
+                showSoftInputOnFocus={false}
+                onPressIn={() => {
+                  stepForm === StepForm.ADD_FRIENDS &&
+                    setShowModal(ModalType.GUESTS);
+                }}
+                placeholder="Quem estará na viagem?"
+              />
             </Input>
           </>
         )}
@@ -121,9 +205,56 @@ export function Home() {
         onClose={() => setShowModal(ModalType.NONE)}
       >
         <View className="gap-4 mt-4">
-          <Calendar />
+          <Calendar
+            onDayPress={handleSelectDate}
+            markedDates={selectedDates.dates}
+            minDate={dayjs().toISOString()}
+          />
           <Button onPress={() => setShowModal(ModalType.NONE)}>
             <Button.Title>Confirmar</Button.Title>
+          </Button>
+        </View>
+      </Modal>
+
+      <Modal
+        title="Selecionar convidados"
+        subtitle="Os convidados irão receber um e-mail para confirmar a sua participação na viagem."
+        visible={showModal === ModalType.GUESTS}
+        onClose={() => setShowModal(ModalType.NONE)}
+      >
+        <View className="my-2 flex-wrap gap-2 border-b border-zinc-800 py-5 items-start">
+          {emailsToInvite.length > 0 ? (
+            emailsToInvite.map((email) => (
+              <GuestEmail
+                key={email}
+                email={email}
+                onRemove={() => handleRemoveEmail(email)}
+              />
+            ))
+          ) : (
+            <Text className="text-zinc-600 font-regular text-base">
+              Nenhum convidado adicionado
+            </Text>
+          )}
+        </View>
+
+        <View className="gap-4 mt-4">
+          <Input variant="secondary">
+            <AtSign color={colors.zinc[400]} size={20} />
+            <Input.Field
+              placeholder="Digite o email do convidado"
+              keyboardType="email-address"
+              value={emailToInvite}
+              autoCapitalize="none"
+              secureTextEntry
+              onChangeText={(text) => setEmailToInvite(text.toLowerCase())}
+              returnKeyType="send"
+              onSubmitEditing={handleAddEmail}
+            />
+          </Input>
+
+          <Button onPress={handleAddEmail}>
+            <Button.Title>Convidar</Button.Title>
           </Button>
         </View>
       </Modal>
