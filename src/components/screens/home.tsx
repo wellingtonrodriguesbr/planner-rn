@@ -22,6 +22,9 @@ import { validateInput } from "@/utils/validate-input";
 import { DateData } from "react-native-calendars";
 
 import dayjs from "dayjs";
+import { saveTripId } from "@/storage/trip";
+import { router } from "expo-router";
+import { api } from "@/server/api";
 
 enum StepForm {
   TRIP_DETAILS = 1,
@@ -44,6 +47,7 @@ export function Home() {
   const [destination, setDestination] = useState("");
   const [emailToInvite, setEmailToInvite] = useState("");
   const [emailsToInvite, setEmailsToInvite] = useState<string[]>([]);
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
 
   function handleNextStepForm() {
     if (
@@ -65,8 +69,19 @@ export function Home() {
     }
 
     if (stepForm === StepForm.TRIP_DETAILS) {
-      setStepForm(StepForm.ADD_FRIENDS);
+      return setStepForm(StepForm.ADD_FRIENDS);
     }
+
+    Alert.alert("Nova viagem", "Confirmar viagem?", [
+      {
+        text: "Não",
+        style: "cancel",
+      },
+      {
+        text: "Sim",
+        onPress: () => handleCreateTrip(),
+      },
+    ]);
   }
 
   function handleSelectDate(selectedDay: DateData) {
@@ -100,6 +115,48 @@ export function Home() {
 
     setEmailsToInvite((emails) => [...emails, emailToInvite]);
     setEmailToInvite("");
+  }
+
+  async function handleSaveTripId(tripId: string) {
+    try {
+      await saveTripId(tripId);
+      router.navigate(`/trip/${tripId}`);
+    } catch (error) {
+      Alert.alert(
+        "Erro ao criar viagem",
+        "Não foi possível salvar o ID da viagem no dispositivo. Tente novamente mais tarde."
+      );
+
+      console.log(error);
+    }
+  }
+
+  async function handleCreateTrip() {
+    setIsCreatingTrip(true);
+    try {
+      const { data } = await api.post<{ tripId: string }>("/trips", {
+        destination,
+        starts_at: dayjs(selectedDates.startsAt?.dateString).toString(),
+        ends_at: dayjs(selectedDates.endsAt?.dateString).toString(),
+        emails_to_invite: emailsToInvite,
+      });
+
+      Alert.alert("Nova viagem", "Viagem criada com sucesso!", [
+        {
+          text: "Ok",
+          onPress: () => handleSaveTripId(data.tripId),
+        },
+      ]);
+      setIsCreatingTrip(false);
+    } catch (error) {
+      Alert.alert(
+        "Erro ao criar viagem",
+        "Falha ao criar a viagem. Tente novamente mais tarde."
+      );
+
+      console.log(error);
+      setIsCreatingTrip(false);
+    }
   }
 
   return (
@@ -179,7 +236,7 @@ export function Home() {
           </>
         )}
 
-        <Button onPress={handleNextStepForm}>
+        <Button onPress={handleNextStepForm} isLoading={isCreatingTrip}>
           <Button.Title>
             {stepForm === StepForm.TRIP_DETAILS
               ? "Continuar"
